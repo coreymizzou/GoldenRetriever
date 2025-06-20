@@ -1,156 +1,147 @@
 import os
-import requests
+import re
+import subprocess
 import shutil
-import zipfile
-from bs4 import BeautifulSoup
-from tqdm import tqdm
-from difflib import get_close_matches
+from getpass import getpass
+from urllib.parse import quote
+import requests
 
 # Config
-BASE_URL = "https://localsite.dev/corey/new"
-DOWNLOAD_ROOT = "downloads"
-HEADERS = {'User-Agent': 'Mozilla/5.0'}
+GITLAB_URL = "http://gitlab.local"
+GITLAB_API = f"{GITLAB_URL}/api/v4"
+GROUP_PATH = "corey/tools"
+PRIVATE_TOKEN = "glpat-f99FG_hTyQpyUqKhLxZo"
+DOWNLOAD_ROOT = os.path.join(os.path.expanduser("~"), "Downloads")
+TMP_CLONE_PATH = "/tmp/garuda_clone"
 
+# Suppress insecure warnings
 requests.packages.urllib3.disable_warnings()
 
-def get_links(url):
-    """Return list of (name, full_url) from a directory page."""
-    try:
-        r = requests.get(url, verify=False, headers=HEADERS)
-        r.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Error accessing {url}: {e}")
-        return []
+HEADERS = {"PRIVATE-TOKEN": PRIVATE_TOKEN}
 
-    soup = BeautifulSoup(r.text, 'html.parser')
-    links = []
+def get_json(url):
+    response = requests.get(url, headers=HEADERS, verify=False)
+    response.raise_for_status()
+    return response.json()
 
-    for a in soup.find_all('a', href=True):
-        href = a['href']
-        if href.startswith("/corey/new/"):
-            full_url = f"https://localsite.dev{href}"
-            name = href.rstrip("/").split("/")[-1]
-            links.append((name, full_url))
-    return links
+def list_projects():
+    print("\U0001F4E1 Fetching list of tools...\n")
+    url = f"{GITLAB_API}/groups/{quote(GROUP_PATH, safe='')}/projects?per_page=100"
+    projects = get_json(url)
+    return [proj['name'] for proj in projects]
 
-def download_file(url, out_folder):
-    """Download file from URL into specified folder with progress bar."""
-    filename = url.split("/")[-1]
-    local_path = os.path.join(out_folder, filename)
-    os.makedirs(out_folder, exist_ok=True)
+def choose(prompt, options):
+    for i, option in enumerate(options):
+        print(f"{i+1}. {option}")
+    idx = int(input(f"\n{prompt} (1-{len(options)}): ")) - 1
+    return options[idx]
 
-    with requests.get(url, stream=True, verify=False, headers=HEADERS) as r:
-        r.raise_for_status()
-        total = int(r.headers.get('content-length', 0))
-        with open(local_path, 'wb') as f, tqdm(
-            desc=f"⬇️  {filename}",
-            total=total,
-            unit='B',
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as bar:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-                bar.update(len(chunk))
+def find_versions(project_path):
+    versions = []
+    for entry in os.listdir(project_path):
+        if os.path.isdir(os.path.join(project_path, entry)) and re.match(r'^v[\s\d\-_.]+$', entry, re.IGNORECASE):
+            versions.append(entry)
+    return sorted(versions)
 
-    return local_path
+def combine_and_extract(bin_path, output_folder):
+    os.makedirs(output_folder, exist_ok=True)
+    bin_files = os.listdir(bin_path)
 
-def combine_split_zips(zip_parts, output_path):
-    """Combine split zip parts into one."""
-    with open(output_path, 'wb') as combined:
-        for part in zip_parts:
-            with open(part, 'rb') as pf:
-                shutil.copyfileobj(pf, combined)
-    print(f"🧩 Combined ZIP written to {output_path}")
-    return output_path
+    # Identify split zip parts and full zip
+    zips = [f for f in bin_files if re.search(r'\.z\d{2,3}$', f)]
+    main_zip = next((f for f in bin_files if f.endswith('.zip')), None)
 
-def extract_zip(zip_path, extract_to):
-    """Extract contents of a .zip archive."""
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_to)
-        print(f"📦 Extracted: {zip_path} → {extract_to}")
-    except zipfile.BadZipFile:
-        print(f"❌ Error: {zip_path} is not a valid zip file.")
+    if zips and main_zip:
+        print(f"\n\U0001F527 Extracting split archive from: {main_zip} with parts {zips}\n")
+        zip_path = os.path.join(bin_path, main_zip)
 
-def process_version(tool_name, version_name):
-    version_url = f"{BASE_URL}/{tool_name}/{version_name}"
-    working_dir = os.path.join(DOWNLOAD_ROOT, tool_name, version_name.replace(" ", "_"))
-    os.makedirs(working_dir, exist_ok=True)
+        # Test archive
+        test_result = subprocess.run(["7z", "t", zip_path], capture_output=True, text=True)
+        if test_result.returncode != 0:
+            print("\n❌ Archive test failed:")
+            print(test_result.stdout + test_result.stderr)
+            return
 
-    # BIN
-    bin_url = f"{version_url}/bin"
-    print(f"\n🔧 Getting binaries from: {bin_url}")
-    bin_links = get_links(bin_url)
-    bin_files = []
+        # Extract archive
+        subprocess.run(["7z", "x", zip_path, f"-o{output_folder}"], check=True)
 
-    for name, link in bin_links:
-        if any(name.endswith(ext) for ext in ['.zip', '.z01', '.z02', '.z03']):
-            path = download_file(link, working_dir)
-            bin_files.append(path)
+        # Extract .tar files if needed
+        for item in os.listdir(output_folder):
+            if item.endswith(".tar"):
+                subprocess.run(["7z", "x", os.path.join(output_folder, item), f"-o{output_folder}"], check=True)
 
-    if bin_files:
-        bin_files.sort()
-        output_zip = os.path.join(working_dir, f"{tool_name}_{version_name}_combined.zip")
-        combine_split_zips(bin_files, output_zip)
-        extract_zip(output_zip, working_dir)
+        # Move parts to archive folder
+        archive_dir = os.path.join(output_folder, "archive")
+        os.makedirs(archive_dir, exist_ok=True)
+        for f in [main_zip] + zips:
+            shutil.copy(os.path.join(bin_path, f), archive_dir)
 
-    # DOC
-    doc_url = f"{version_url}/doc"
-    print(f"\n📚 Getting documentation from: {doc_url}")
-    doc_links = get_links(doc_url)
+    elif main_zip:
+        print(f"\n\U0001F527 Extracting standalone zip: {main_zip}\n")
+        zip_path = os.path.join(bin_path, main_zip)
 
-    for name, link in doc_links:
-        doc_path = download_file(link, working_dir)
-        if doc_path.endswith(".zip"):
-            extract_zip(doc_path, working_dir)
+        test_result = subprocess.run(["7z", "t", zip_path], capture_output=True, text=True)
+        if test_result.returncode != 0:
+            print("\n❌ Archive test failed:")
+            print(test_result.stdout + test_result.stderr)
+            return
 
-def fuzzy_input(prompt, options):
-    """Allow fuzzy matching for user input."""
-    raw = input(prompt).strip()
-    matches = get_close_matches(raw, options, n=1, cutoff=0.3)
-    return matches[0] if matches else None
+        subprocess.run(["7z", "x", zip_path, f"-o{output_folder}"], check=True)
 
-def process_tool(tool_name):
-    tool_url = f"{BASE_URL}/{tool_name}"
-    print(f"\n🔎 Fetching versions for {tool_name}...")
-    versions = get_links(tool_url)
-    version_names = [name for name, _ in versions]
+        for item in os.listdir(output_folder):
+            if item.endswith(".tar"):
+                subprocess.run(["7z", "x", os.path.join(output_folder, item), f"-o{output_folder}"], check=True)
 
-    if not version_names:
-        print("⚠️ No versions found.")
-        return
+        archive_dir = os.path.join(output_folder, "archive")
+        os.makedirs(archive_dir, exist_ok=True)
+        shutil.copy(zip_path, archive_dir)
 
-    print("\n📂 Available versions:")
-    for i, name in enumerate(version_names):
-        print(f"{i+1}: {name}")
+    else:
+        for f in bin_files:
+            if f.endswith(".exe"):
+                shutil.copy(os.path.join(bin_path, f), output_folder)
+                return
+        print("\n⚠ No valid zip or exe found to extract.\n")
 
-    selected = fuzzy_input("\nEnter version to download (or leave blank for latest): ", version_names)
-    if not selected:
-        selected = sorted(version_names)[-1]
-        print(f"🕐 No input given. Using latest version: {selected}")
-
-    process_version(tool_name, selected)
+def copy_docs(doc_path, output_folder):
+    for f in os.listdir(doc_path):
+        if f.endswith(".pdf"):
+            shutil.copy(os.path.join(doc_path, f), output_folder)
 
 def main():
-    print("🔍 Fetching available tools...\n")
-    tools = get_links(BASE_URL)
-    tool_names = [name for name, _ in tools]
+    projects = list_projects()
+    project = choose("Select a tool", projects)
 
-    if not tool_names:
-        print("⚠️ No tools found.")
+    if os.path.exists(TMP_CLONE_PATH):
+        shutil.rmtree(TMP_CLONE_PATH, ignore_errors=True)
+
+    print(f"\n\U0001F9E0 Cloning {project} from GitLab (shallow)...")
+    username = input("Username for GitLab: ")
+    password = getpass("Password: ")
+
+    subprocess.run([
+        "git", "clone", "--depth", "1",
+        f"http://{username}:{password}@gitlab.local/{GROUP_PATH}/{project}.git",
+        TMP_CLONE_PATH
+    ], check=True)
+
+    versions = find_versions(TMP_CLONE_PATH)
+    if not versions:
+        print(f"\n⚠  No version folders found for '{project}'.")
         return
 
-    print("🧰 Available tools:")
-    for i, name in enumerate(tool_names):
-        print(f"{i+1}: {name}")
+    version = choose("Select a version", versions)
 
-    selected = fuzzy_input("\nEnter tool name to download: ", tool_names)
-    if not selected:
-        print("❌ No valid tool selected.")
-        return
+    bin_path = os.path.join(TMP_CLONE_PATH, version, "Bin")
+    doc_path = os.path.join(TMP_CLONE_PATH, version, "Doc")
+    dest_folder = os.path.join(DOWNLOAD_ROOT, project)
 
-    process_tool(selected)
+    combine_and_extract(bin_path, dest_folder)
+    copy_docs(doc_path, dest_folder)
+
+    shutil.rmtree(TMP_CLONE_PATH, ignore_errors=True)
+
+    print(f"\n✅ Done! Files available at: {dest_folder}")
 
 if __name__ == "__main__":
     main()
