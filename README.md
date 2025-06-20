@@ -1,115 +1,97 @@
-# Garuda# 🦅 Garuda
+# Garuda Downloader
 
-**Garuda** is a fast, intelligent Python utility for interactively downloading, combining, and extracting versioned binaries and documentation from a self-hosted GitLab repository.
-
-Inspired by _Garuda_, the mighty bird-like being and mount of Vishnu in Hindu mythology, this tool embodies **speed, strength, and precision** — fetching your tools like a divine courier from the digital heavens.
+Garuda Downloader is a Python-based CLI utility that securely pulls internal tools from a private GitLab group repo. It supports split binary files (like `.zip`, `.z01`, `.z02`, and `.tar.zip`) and automatically extracts everything into a structured folder.
 
 ---
 
-## ✨ Features
+## 🔧 Features
 
-- 🔍 **Fuzzy search** for tool and version names (e.g., "ant" matches "Antler")
-- 🕐 **Auto-selects latest version** if left blank
-- 📦 **Combines multipart `.zip`, `.z01`, `.z02` files**
-- 📚 **Downloads and extracts `.pdf` and `.zip` documentation**
-- 📊 **Progress bars** for downloads with `tqdm`
-- 📂 **Organized output structure** per tool and version
-
----
-
-## 📁 Expected GitLab Structure
-
-```
-https://localsite.dev/corey/new/
-├── Antler/
-│   ├── v 2-0/
-│   │   ├── bin/
-│   │   │   ├── Antler.z01
-│   │   │   ├── Antler.z02
-│   │   │   ├── Antler.zip
-│   │   └── doc/
-│   │       ├── guide.pdf
-│   │       ├── examples.zip
-```
+- 🔐 GitLab authentication (username/password)
+- 🧭 Interactive tool & version selection
+- 📦 Handles:
+  - Split zip archives (`.z01`, `.z02`, `.zip`)
+  - Combined `.tar.zip` archives
+  - Standalone `.exe` binaries
+- 📂 Auto-extracts `.tar` after unzip if present
+- 📁 Organizes output in `~/Downloads/<tool>/`
+- 📄 Copies relevant PDFs from the `Doc/` folder
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Setup
 
-### 1. Clone the Repository
+### 1. Clone this repo
 
 ```bash
-git clone https://github.com/yourusername/garuda.git
-cd garuda
+git clone https://github.com/yourusername/garuda-downloader.git
+cd garuda-downloader
 ```
 
-### 2. Install Dependencies
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
+### 3. Make sure `git` and `7z` are installed
 
-## 🧑‍💻 Usage
+Install 7-Zip (if not already installed):
 
 ```bash
-python garuda.py
+sudo apt install p7zip-full  # Debian/Ubuntu
 ```
 
-You'll be prompted to:
+---
 
-1. **Select a tool** (e.g., `Antler`)
-2. **Select a version** (e.g., `v 2-0`, or press Enter to use the latest)
-3. Garuda will:
-   - Download and combine `.z01`, `.z02`, `.zip` from `/bin`
-   - Extract the combined archive
-   - Download and extract documentation files from `/doc`
+## 🚀 Usage
+
+```bash
+python3 garuda.py
+```
+
+You’ll be prompted to:
+
+- Select a tool
+- Choose a version (e.g. `v 2-0`, `v 2-0-1`)
+- Enter your GitLab credentials
+
+Extracted files will be saved in:  
+`~/Downloads/<tool>/`
 
 ---
 
-## 📂 Output Structure
+## 📁 Output Example
 
-```bash
-downloads/
+```
+~/Downloads/
 └── Antler/
-    └── v_2-0/
-        ├── Antler.z01
-        ├── Antler.z02
-        ├── Antler.zip
-        ├── Antler_v 2-0_combined.zip
-        ├── guide.pdf
-        ├── examples.zip
-        ├── [extracted binaries]
-        └── [extracted docs]
+    ├── dummy.bin
+    ├── README.pdf
+    ├── archive/
+    │   ├── test_split.z01
+    │   ├── test_split.z02
+    │   └── test_split.zip
 ```
 
 ---
 
-## ⚙️ Configuration
+## 🧪 Notes
 
-Update these variables in `garuda.py` to match your environment:
+- Version folders can be named like `v 2-0`, `v_2-0`, `v 2-0-1`, etc.
+- The script handles case-insensitive folder names like `/Bin` or `/bin`.
+- If no valid zip or exe is found, a warning is shown.
+- Archive components are preserved in an `archive/` subfolder.
 
-```python
-BASE_URL = "https://localsite.dev/corey/new"
-DOWNLOAD_ROOT = "downloads"
+---
+
+## 📄 License
+
+MIT License © 2025 Corey Hughes
+
+---
+
+## 📦 requirements.txt
+
 ```
-
----
-
-## 🦅 Why "Garuda"?
-
-> In Hindu mythology, **Garuda** is the eagle-like mount of Lord Vishnu — a symbol of **strength, vigilance, and speed**.  
-> This tool, like its namesake, flies fast, strikes precisely, and delivers your payloads without fail.
-
----
-
-## 📜 License
-
-MIT License — use it freely, improve it boldly.
-
----
-
-## 🤝 Contribute or Ask Questions
-
-Open an issue or submit a pull request — we welcome contributions and suggestions.
+requests
+```
