@@ -136,9 +136,18 @@ def main():
     bin_path = os.path.join(TMP_CLONE_PATH, version, "Bin")
     doc_path = os.path.join(TMP_CLONE_PATH, version, "Doc")
     dest_folder = os.path.join(DOWNLOAD_ROOT, project)
+    include_src = input("Include source files from /Src directory? (y/N): ").strip().lower() == 'y'
 
     combine_and_extract(bin_path, dest_folder)
     copy_docs(doc_path, dest_folder)
+
+    if include_src:
+    src_path = os.path.join(TMP_CLONE_PATH, version, "Src")
+    dest_src_path = os.path.join(dest_folder, "Src")
+    if os.path.exists(src_path):
+        shutil.copytree(src_path, dest_src_path, dirs_exist_ok=True)
+    else:
+        print("⚠️  No /Src directory found.")
 
     shutil.rmtree(TMP_CLONE_PATH, ignore_errors=True)
 
