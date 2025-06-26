@@ -29,6 +29,7 @@ def list_projects():
     url = f"{GITLAB_API}/groups/{quote(GROUP_PATH, safe='')}/projects?per_page=100"
     projects = get_json(url)
     return [proj['name'] for proj in projects]
+    #proj_list.sort(lambda a: a['name'])     where proj_list is a list of dictionaries
 
 def choose(prompt, options):
     for i, option in enumerate(options):
