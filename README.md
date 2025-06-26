@@ -1,4 +1,4 @@
-![Golden Retriever Logo](golden_retriever_logo.png)
+![Golden Retriever Logo](gore.png)
 
 # Golden Retriever
 
